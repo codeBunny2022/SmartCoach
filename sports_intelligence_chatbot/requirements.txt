@@ -1,0 +1,12 @@
+pypdf>=4.3.1
+numpy>=1.26.4
+scikit-learn>=1.4.2
+streamlit>=1.36.0
+huggingface-hub>=0.23.4
+# Optional but recommended
+faiss-cpu>=1.8.0.post1
+sentence-transformers>=2.7.0
+transformers>=4.41.2
+accelerate>=0.33.0
+llama-cpp-python>=0.2.85
+# torch optional when using transformers 
