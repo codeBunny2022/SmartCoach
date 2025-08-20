@@ -1,6 +1,15 @@
-# Sports Intelligence Chatbot (RAG)
+# 🚀 Sports Intelligence Chatbot (RAG)
 
-Offline-capable sports Q&A agent with autonomous query routing and multiple RAG strategies. Default sport examples assume Football/Soccer and Cricket, but you can load any sport content.
+<p align="center">
+<img src="https://img.shields.io/badge/Python-3.9%2B-blue" alt="Python">
+<img src="https://img.shields.io/badge/Embeddings-SentenceTransformers-ff69b4" alt="Sentence-Transformers">
+<img src="https://img.shields.io/badge/Vector%20Index-FAISS%20(Optional)-orange" alt="FAISS">
+<img src="https://img.shields.io/badge/LLM-Transformers%20(Optional)-blueviolet" alt="Transformers">
+<img src="https://img.shields.io/badge/Frontend-Streamlit-brightgreen" alt="Streamlit">
+<img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome">
+</p>
+
+Offline-capable sports Q&A agent with autonomous query routing and multiple RAG strategies. Default sport examples assume Football/Soccer and Cricket, but you can load any sport content. Designed to degrade gracefully when large models or FAISS are unavailable.
 
 ## Features
 
