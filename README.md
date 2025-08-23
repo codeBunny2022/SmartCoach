@@ -22,6 +22,7 @@ Offline-capable sports Q&A agent with autonomous query routing and multiple Retr
 - [End-to-End Pipeline Walkthrough](#-end-to-end-pipeline-walkthrough)
 - [Quick Start](#-quick-start)
 - [Configuration & Options](#-configuration--options)
+- [Embedding & Chunking Math](#-embedding--chunking-math)
 - [Project Structure](#-project-structure)
 - [Architecture](#-architecture)
 - [Local Testing Guide](#-local-testing-guide)
@@ -244,6 +245,36 @@ streamlit run streamlit_app.py
   - Fallback: extractive sentence selection from retrieved contexts
 - **Frontend override**
   - Strategy override dropdown: force `factual`, `comparative`, `analytical`, `creative`, or `auto`
+
+## 📐 Embedding & Chunking Math
+
+- Embedding dimension does not depend on document length.
+  - Sentence‑Transformers path: \(D = 384\) for chunks and queries (from `all-MiniLM-L6-v2`).
+  - TF‑IDF fallback: \(D = \min(|V_{corpus}|,\ 4096)\), same for chunks and queries.
+- Number of embeddings equals the number of chunks.
+
+Variables: \(L\) = document length (characters), \(S = 800\) (chunk size), \(O = 120\) (overlap), \(\text{step} = S - O = 680\).
+
+- Chunk count \(n(L)\):
+  - If \(L \le S\): \(n = 1\)
+  - If \(L > S\): \(n = 1 + \lceil (L - S) / \text{step} \rceil\)
+- Embedding shapes:
+  - Chunks matrix: \((n, D)\)
+  - Query: \((D)\) or \((1, D)\)
+- Memory (float32): \(\text{bytes} \approx n \times D \times 4\)
+
+Examples (approx.):
+- \(L = 10{,}000\): \(n = 1 + \lceil (10{,}000 - 800)/680 \rceil = 15\)
+  - ST: \(~15 \times 384 \times 4 \approx 23\,\text{KB}\)
+  - TF‑IDF (\(D=4096\)): \(~15 \times 4096 \times 4 \approx 240\,\text{KB}\)
+- \(L = 100{,}000\): \(n = 148\)
+  - ST: \(~148 \times 384 \times 4 \approx 226\,\text{KB}\)
+  - TF‑IDF: \(~148 \times 4096 \times 4 \approx 2.32\,\text{MB}\)
+- \(L = 1{,}000{,}000\): \(n = 1472\)
+  - ST: \(~1{,}472 \times 384 \times 4 \approx 2.16\,\text{MB}\)
+  - TF‑IDF: \(~1{,}472 \times 4096 \times 4 \approx 24.1\,\text{MB}\)
+
+Note: The splitter respects sentence/paragraph boundaries, so chunk edges may shift slightly; the formula above matches the character-based accumulation used.
 
 ## 🗂️ Project Structure
 
