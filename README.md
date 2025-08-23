@@ -17,6 +17,8 @@ Offline-capable sports Q&A agent with autonomous query routing and multiple Retr
 - [Features](#-features)
 - [Frontend (Streamlit) Features](#-frontend-streamlit-features)
 - [How it Works](#-how-it-works)
+- [RAG Strategies: Detailed Design](#-rag-strategies-detailed-design)
+- [End-to-End Pipeline Walkthrough](#-end-to-end-pipeline-walkthrough)
 - [Quick Start](#-quick-start)
 - [Configuration & Options](#-configuration--options)
 - [Project Structure](#-project-structure)
@@ -75,6 +77,95 @@ This project bridges the gap with retrieval-first design, multiple query-aware s
 - **multihop_rag**: Iteratively expand the query with context to bridge multi-hop questions
 - **adaptive_threshold_rag**: Dynamically lower the score threshold until enough context is found
 - **multiquery_rag**: Generate/query rephrasings for robust retrieval, then merge and deduplicate
+
+## 🔬 RAG Strategies: Detailed Design
+
+The system implements several complementary retrieval strategies. Each is designed for a specific shape of user question and data distribution, and they share a common interface: produce a ranked set of context chunks plus structured citations.
+
+- **Simple RAG**
+  - Goal: Fast, precise retrieval for straightforward factual questions
+  - Inputs: query text, embedding model, vector index
+  - Technique: Embed the query, search top‑K by inner-product/cosine similarity, filter by a minimum score threshold
+  - Why it works: With normalized vectors, inner product approximates cosine; thresholding removes off-topic matches
+  - Trade‑offs: May miss paraphrases or nuanced phrasing; best when terminology is consistent with the KB
+
+- **Hierarchical RAG**
+  - Goal: Improve focus when initial retrieval returns long or noisy passages
+  - Inputs: initial top‑K contexts from Simple RAG
+  - Technique: Create short per‑chunk summaries (first N characters), embed summaries and the query, re‑rank by similarity, keep the best few
+  - Why it works: Summaries compress salient information, reducing lexical noise before re‑ranking
+  - Trade‑offs: Summaries can omit details; still bounded by initial retrieval quality
+
+- **Multihop RAG**
+  - Goal: Answer questions that require chaining facts across multiple chunks
+  - Inputs: query text, number of hops
+  - Technique: Retrieve once, then expand the query with the most relevant snippet from the previous hop; repeat retrieval
+  - Why it works: Progressive query expansion incorporates discovered entities/terms, bridging documents
+  - Trade‑offs: Risk of drift if the first hop is off‑topic; capped hops to control latency
+
+- **Adaptive‑Threshold RAG**
+  - Goal: Balance precision and recall without manual tuning
+  - Inputs: base K, descending list of thresholds
+  - Technique: Attempt retrieval at a high score threshold; if too few contexts are found, lower the threshold and try again
+  - Why it works: Tight thresholds avoid noise; fallback thresholds ensure the system still returns something when the KB is sparse
+  - Trade‑offs: Additional searches may increase latency in hard queries
+
+- **Multiquery RAG**
+  - Goal: Improve recall against varied phrasings and terminology
+  - Inputs: original query and several rephrasings (generated or heuristic)
+  - Technique: Run Simple RAG per variant, pool all hits, deduplicate by document index keeping the maximum score, and select the global top
+  - Why it works: Different phrasings activate different parts of the embedding space; pooling captures more relevant chunks
+  - Trade‑offs: More compute per query; diversity depends on variant quality. When an LLM rephraser is unavailable, the system gracefully falls back to the original query only
+
+- **HyDE compatibility wrapper**
+  - Context: HyDE (hypothetical document embeddings) often needs strong LLMs; this system provides a no‑op wrapper that defaults to Simple RAG to conserve resources
+
+## 🧵 End-to-End Pipeline Walkthrough
+
+This section explains the complete flow from a user question to an answer, mapping directly to the modules and techniques in the repository.
+
+- **Document ingestion and chunking**
+  - PDFs are parsed page‑by‑page; TXT/MD are read as plain text
+  - Text is split into overlapping chunks using a sentence/paragraph‑aware splitter with configurable `chunk_size` and `overlap`
+  - Overlap preserves cross‑boundary context so answers don’t miss information that straddles chunk edges
+
+- **Embeddings**
+  - Primary: Sentence‑Transformers encodes each chunk; embeddings are L2‑normalized at inference for cosine‑like inner products
+  - Fallback: TF‑IDF vectorizer fits on the corpus for chunk embeddings; queries are transformed and L2‑normalized for compatibility with inner‑product search
+  - Rationale: Both paths produce unit‑norm vectors so inner product corresponds to cosine similarity across FAISS and NumPy paths
+
+- **Vector index**
+  - FAISS path: Flat inner‑product index for speed and simplicity; suitable for normalized vectors
+  - NumPy path: Matrix multiplication for similarity when FAISS isn’t available, returning sorted indices and scores
+
+- **Query classification and routing**
+  - Heuristics detect sport domain terms and cues for factual/comparative/analytical/creative intents with high precision
+  - Optional zero‑shot classifier is used when available; otherwise, heuristics decide
+  - Routing policy maps: factual → adaptive threshold; comparative → multiquery (fallback to hierarchical if few contexts); analytical → multihop; creative → multiquery; non‑sport → friendly rejection
+
+- **Retrieval strategies in action**
+  - The selected strategy uses the shared embed‑search‑rank primitives to produce contexts and structured citations
+  - Citations include the file path, chunk index, and similarity score for transparency
+
+- **Answer synthesis**
+  - If a small local LLM is available: a concise instruction prompt is built with the top snippets; the model generates a short answer
+  - If no LLM or long contexts: extractive synthesis ranks candidate sentences from the top contexts by similarity to the query and returns the best snippet, trimmed to a safe length
+  - Safety: The prompt instructs to use only provided context and admit uncertainty; extractive mode inherently avoids hallucination by quoting context
+
+- **Confidence and metadata**
+  - Confidence is estimated from the breadth of retrieved context (none → very low; few → moderate; several → higher)
+  - The response includes the applied strategy, confidence score, and top citations for user inspection
+
+- **Graceful degradation**
+  - Missing FAISS → NumPy similarity
+  - Missing Sentence‑Transformers → TF‑IDF vectors
+  - Missing Transformers LLM → extractive synthesis
+  - Missing zero‑shot classifier → heuristic classification
+
+- **Why these design choices**
+  - Normalize across components so inner‑product works uniformly
+  - Prefer simple, inspectable building blocks that are robust on CPU‑only machines
+  - Make fallbacks explicit and layered so the system is useful even with minimal dependencies
 
 ## 🏁 Quick Start
 
