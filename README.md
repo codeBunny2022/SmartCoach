@@ -18,6 +18,7 @@ Offline-capable sports Q&A agent with autonomous query routing and multiple Retr
 - [Frontend (Streamlit) Features](#-frontend-streamlit-features)
 - [How it Works](#-how-it-works)
 - [RAG Strategies: Detailed Design](#-rag-strategies-detailed-design)
+- [Strategy Selection Policy (Scenarios → Strategy)](#-strategy-selection-policy-scenarios--strategy)
 - [End-to-End Pipeline Walkthrough](#-end-to-end-pipeline-walkthrough)
 - [Quick Start](#-quick-start)
 - [Configuration & Options](#-configuration--options)
@@ -119,6 +120,39 @@ The system implements several complementary retrieval strategies. Each is design
 
 - **HyDE compatibility wrapper**
   - Context: HyDE (hypothetical document embeddings) often needs strong LLMs; this system provides a no‑op wrapper that defaults to Simple RAG to conserve resources
+
+## 🧭 Strategy Selection Policy (Scenarios → Strategy)
+
+Selection happens centrally in `sports_intelligence_chatbot/src/decision_engine.py` via `DecisionEngine.route(...)`, which first classifies the query using `sports_intelligence_chatbot/src/query_classifier.py` and then chooses a RAG strategy from `sports_intelligence_chatbot/src/rag_strategies.py`.
+
+- **Non‑sport query** → reject with guidance
+  - Scenario: Query lacks clear sports terms or intent
+  - Action: Return a friendly message asking to rephrase within sports context
+
+- **Factual intent** → adaptive‑threshold RAG
+  - Scenario: “what/when/who/how” style definitions, rules, dates, entities
+  - Rationale: Start precise, relax thresholds only if necessary to gather enough signal
+
+- **Comparative intent** → multiquery RAG → fallback to hierarchical if contexts < 2
+  - Scenario: “A vs B”, “compare”, “head‑to‑head”, “better than”
+  - Rationale: Rephrasings broaden recall; hierarchical fallback refocuses when results are sparse
+
+- **Analytical intent** → multihop RAG (2 hops)
+  - Scenario: “why/strategy/tactical/analysis/reason” questions that need chaining
+  - Rationale: Iterative query expansion bridges dispersed facts across chunks
+
+- **Creative intent** → multiquery RAG
+  - Scenario: Open‑ended suggestions, recommendations, synthesis
+  - Rationale: Diverse rephrasings improve coverage for brainstorming‑style prompts
+
+- **Availability fallbacks do not change selection**
+  - Embeddings: Sentence‑Transformers → TF‑IDF
+  - Index: FAISS → NumPy similarity
+  - Rephraser: multiquery uses fewer/no variants if transformers are unavailable
+  - Generation: local LLM → extractive sentence selection
+
+- **Confidence estimation**
+  - Implemented in `DecisionEngine._estimate_confidence(...)` as a function of how many contexts were retrieved (none → low, few → medium, several → higher)
 
 ## 🧵 End-to-End Pipeline Walkthrough
 
